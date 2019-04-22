@@ -3,6 +3,7 @@ package wechat
 import (
 	"encoding/xml"
 	"fmt"
+	"image"
 	"os"
 	"strings"
 )
@@ -17,13 +18,22 @@ type MessageOut struct {
 	ToUserName string
 	Content    string
 	Type       int
+	MsgId      string
+}
+
+type MessageImage struct {
+	Img image.Image
+	//MsgId    string
+	TargetId string
+	Message
 }
 
 type MessageRecord struct {
-	From    string
-	To      string
-	Content string
-	Type    int
+	From       string
+	To         string
+	Content    string
+	ContentImg image.Image
+	Type       int
 }
 
 func (m *MessageRecord) String() string {
@@ -52,6 +62,7 @@ type Message struct {
 	FileSize             string
 	FromUserNickName     string
 	ToUserNickName       string
+	MsgId                string
 }
 
 func (m Message) String() string {
@@ -311,6 +322,7 @@ func NewMessageRecordOut(from string, message MessageOut) *MessageRecord {
 		From:    from,
 		To:      message.ToUserName,
 		Content: message.Content,
+		Type:    message.Type,
 	}
 }
 
@@ -319,5 +331,16 @@ func NewMessageRecordIn(message Message) *MessageRecord {
 		From:    message.FromUserName,
 		To:      message.ToUserName,
 		Content: message.Content,
+		Type:    message.MsgType,
+	}
+}
+
+func NewImageMessageRecordIn(message MessageImage) *MessageRecord {
+	return &MessageRecord{
+		From:       message.FromUserName,
+		To:         message.ToUserName,
+		Content:    message.Content,
+		Type:       message.MsgType,
+		ContentImg: message.Img,
 	}
 }

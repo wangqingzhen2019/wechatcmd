@@ -2,8 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"github.com/skratchdot/open-golang/open"
+	"image"
+	"image/png"
 	"log"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	ui "github.com/hawklithm/termui"
 	"github.com/hawklithm/termui/widgets"
@@ -11,12 +17,13 @@ import (
 )
 
 const (
-	CurMark  = "(bg-red)"
-	PageSize = 45
+	SelectedMark   = "(bg:red)"
+	UnSelectedMark = "(bg:blue)"
+	PageSize       = 45
 )
 
 type Layout struct {
-	chatBox         *widgets.Paragraph //聊天窗口
+	chatBox         *widgets.ImageList //聊天窗口
 	msgInBox        *widgets.Paragraph //消息窗口
 	editBox         *widgets.Paragraph // 输入框
 	userNickListBox *widgets.List
@@ -26,9 +33,10 @@ type Layout struct {
 	masterID        string //主人的id
 	currentMsgCount int
 	maxMsgCount     int
-	userIn          chan []string          // 用户的刷新
-	msgIn           chan wechat.Message    // 消息刷新
-	msgOut          chan wechat.MessageOut //  消息输出
+	userIn          chan []string            // 用户的刷新
+	msgIn           chan wechat.Message      // 消息刷新
+	msgOut          chan wechat.MessageOut   //  消息输出
+	imageIn         chan wechat.MessageImage //  图片消息
 	closeChan       chan int
 	autoReply       chan int
 	showUserList    []string
@@ -42,11 +50,16 @@ type Layout struct {
 	logger          *log.Logger
 	userChatLog     map[string][]*wechat.MessageRecord
 	groupMemberMap  map[string]map[string]string
+	imageMap        map[string]image.Image
+	msgIdList       map[string][]string
+	selectedMsgId   string
 }
 
 func NewLayout(userNickList []string, userIDList []string,
 	groupMemberList []wechat.Member, myName, myID string,
-	msgIn chan wechat.Message, msgOut chan wechat.MessageOut, closeChan, autoReply chan int, logger *log.Logger) {
+	msgIn chan wechat.Message, msgOut chan wechat.MessageOut,
+	imageIn chan wechat.MessageImage,
+	closeChan, autoReply chan int, logger *log.Logger) {
 
 	//	chinese := false
 	err := ui.Init()
@@ -59,6 +72,7 @@ func NewLayout(userNickList []string, userIDList []string,
 	userMap := make(map[string]string)
 	userChatLog := make(map[string][]*wechat.MessageRecord)
 	groupMemberMap := make(map[string]map[string]string)
+	imageMap := make(map[string]image.Image)
 
 	size := len(userNickList)
 
@@ -90,7 +104,7 @@ func NewLayout(userNickList []string, userIDList []string,
 
 	userNickListBox.Rows = userNickList
 
-	chatBox := widgets.NewParagraph()
+	chatBox := widgets.NewImageList()
 	chatBox.SetRect(width*2/10, 0, width*6/10, height*8/10)
 
 	chatBox.TextStyle = ui.NewStyle(ui.ColorRed)
@@ -127,6 +141,7 @@ func NewLayout(userNickList []string, userIDList []string,
 		editBox:         editBox,
 		msgIn:           msgIn,
 		msgOut:          msgOut,
+		imageIn:         imageIn,
 		closeChan:       closeChan,
 		currentMsgCount: 0,
 		maxMsgCount:     18,
@@ -140,6 +155,8 @@ func NewLayout(userNickList []string, userIDList []string,
 		logger:          logger,
 		userChatLog:     userChatLog,
 		groupMemberMap:  groupMemberMap,
+		imageMap:        imageMap,
+		msgIdList:       make(map[string][]string),
 	}
 
 	go l.displayMsgIn()
@@ -154,15 +171,15 @@ func NewLayout(userNickList []string, userIDList []string,
 		case "q", "<C-c>", "<C-d>":
 			return
 		case "<Enter>":
-			appendToPar(l.chatBox, l.masterName+"->"+DelBgColor(l.chatBox.
-				Title)+":"+l.editBox.Text+"\n")
+			appendToList(l.chatBox, l.masterName+"->"+l.chatBox.
+				Title+":"+l.editBox.Text+"\n")
 			l.logger.Println(l.editBox.Text)
 			if l.editBox.Text != "" {
 				l.SendText(l.editBox.Text)
 			}
 			resetPar(l.editBox)
-		case "<C-1>":
-			l.autoReply <- 1 //开启自动回复
+		case "<C-w>":
+			l.showDetail()
 		case "<C-2>":
 			l.autoReply <- 0 //关闭自动回复
 		case "<C-3>":
@@ -171,6 +188,10 @@ func NewLayout(userNickList []string, userIDList []string,
 			l.NextUser()
 		case "<C-p>":
 			l.PrevUser()
+		case "<C-j>":
+			l.NextSelect()
+		case "<C-k>":
+			l.PrevSelect()
 		case "<Space>":
 			appendToPar(l.editBox, " ")
 		case "<Backspace>":
@@ -192,6 +213,9 @@ func NewLayout(userNickList []string, userIDList []string,
 			} else if e.Type == ui.ResizeEvent {
 				logger.Println("resize event received, payload=", e.Payload,
 					"id=", e.ID)
+			} else if e.Type == ui.MouseEvent {
+				logger.Println("mouse event received, payload=", e.Payload,
+					"id=", e.ID)
 			}
 		}
 
@@ -201,26 +225,63 @@ func NewLayout(userNickList []string, userIDList []string,
 
 func (l *Layout) displayMsgIn() {
 	var (
-		msg wechat.Message
+		msg    wechat.Message
+		imgMsg wechat.MessageImage
 	)
 
 	for {
 		select {
 
-		case msg = <-l.msgIn:
+		case imgMsg = <-l.imageIn:
+			//l.imageMap[imgMsg.MsgId] = imgMsg.Img
+			//if l.msgIdList[imgMsg.TargetId] == nil {
+			//	l.msgIdList[imgMsg.TargetId] = []string{}
+			//}
+			//l.msgIdList[imgMsg.TargetId] = append(l.msgIdList[imgMsg.TargetId], imgMsg.MsgId)
 
 			var newMsgText string
 
+			if l.masterID == imgMsg.FromUserName {
+				newMsgText = l.apendChatLogOut(wechat.MessageOut{ToUserName: imgMsg.
+					ToUserName, Content: imgMsg.Content, Type: imgMsg.MsgType,
+					MsgId: imgMsg.MsgId})
+			} else {
+				newMsgText = l.apendImageChatLogIn(imgMsg)
+			}
+
+			l.logger.Println("message receive = ", newMsgText)
+
+			appendToPar(l.msgInBox, newMsgText+"\n")
+
+			var targetUserName string
+			if l.masterID == imgMsg.FromUserName {
+				targetUserName = imgMsg.ToUserName
+			} else {
+				targetUserName = imgMsg.FromUserName
+			}
+			if targetUserName == l.userIDList[l.userCur] {
+				l.logger.Println("append to current chatbox", imgMsg.FromUserName,
+					"to=",
+					imgMsg.ToUserName, "content=", imgMsg.Content)
+				appendImageToList(l.chatBox, imgMsg.Img)
+			}
+
+		case msg = <-l.msgIn:
+
+			var newMsgText string
+			msg.Content = TranslateEmoji(ConvertToEmoji(msg.Content))
+
 			if l.masterID == msg.FromUserName {
 				newMsgText = l.apendChatLogOut(wechat.MessageOut{ToUserName: msg.
-					ToUserName, Content: msg.Content, Type: msg.MsgType})
+					ToUserName, Content: msg.Content, Type: msg.MsgType,
+					MsgId: msg.MsgId})
 			} else {
 				newMsgText = l.apendChatLogIn(msg)
 			}
 
 			l.logger.Println("message receive = ", newMsgText)
 
-			appendToPar(l.msgInBox, newMsgText)
+			appendToPar(l.msgInBox, newMsgText+"\n")
 
 			var targetUserName string
 			if l.masterID == msg.FromUserName {
@@ -232,7 +293,7 @@ func (l *Layout) displayMsgIn() {
 				l.logger.Println("append to current chatbox", msg.FromUserName,
 					"to=",
 					msg.ToUserName, "content=", msg.Content)
-				appendToPar(l.chatBox, newMsgText)
+				appendToList(l.chatBox, newMsgText)
 			}
 
 		case <-l.closeChan:
@@ -246,20 +307,78 @@ func (l *Layout) displayMsgIn() {
 func (l *Layout) PrevUser() {
 	l.userNickListBox.ScrollUp()
 	l.userCur = l.userNickListBox.SelectedRow
-	l.chatBox.Title = DelBgColor(l.userNickListBox.Rows[l.userNickListBox.SelectedRow])
+	l.chatBox.Title = l.userNickListBox.Rows[l.userNickListBox.SelectedRow]
 	l.logger.Println("title=", l.chatBox.Title, "content=",
 		l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
-	l.chatBox.Text = convertChatLogToText(l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
+	setRows(l.chatBox, l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
+	l.logger.Println("prev user", "rows=", len(l.chatBox.Rows))
 	ui.Render(l.userNickListBox, l.chatBox)
+}
+
+func setRows(p *widgets.ImageList, records []*wechat.MessageRecord) {
+	var rows []*widgets.ImageListItem
+	for _, i := range records {
+		item := widgets.NewImageListItem()
+		if i.ContentImg != nil {
+			item.Img = i.ContentImg
+		} else {
+			item.Text = i.From + "->" + i.To + ": " + i.Content
+		}
+		rows = append(rows, item)
+	}
+	p.Rows = rows
+	p.SelectedRow = len(p.Rows) - 1
+	if p.SelectedRow < 0 {
+		p.SelectedRow = 0
+	}
+}
+
+func (l *Layout) PrevSelect() {
+	l.chatBox.ScrollUp()
+	ui.Render(l.chatBox)
+}
+
+func (l *Layout) showDetail() {
+	item := l.chatBox.Rows[l.chatBox.SelectedRow]
+	if item.Img == nil {
+		return
+	}
+	//root, e := os.Getwd()
+	//if e != nil {
+	root := "/tmp"
+	//}
+	key := time.Now().UTC().UnixNano()
+	builder := strings.Builder{}
+	builder.WriteString(root)
+	builder.WriteRune(os.PathSeparator)
+	builder.WriteString(strconv.FormatInt(key, 10))
+	builder.WriteString(".png")
+	out, err := os.Create(builder.String())
+	if err != nil {
+		l.logger.Fatalln("open file failed! path=", builder.String(), err)
+	}
+	if err := png.Encode(out, item.Img); err != nil {
+		l.logger.Fatalln("encode image failed! path=", builder.String(), err)
+	} else {
+		_ = open.Start(builder.String())
+	}
+
+}
+
+func (l *Layout) NextSelect() {
+	l.chatBox.ScrollDown()
+	ui.Render(l.chatBox)
 }
 
 func (l *Layout) NextUser() {
 	l.userNickListBox.ScrollDown()
 	l.userCur = l.userNickListBox.SelectedRow
-	l.chatBox.Title = DelBgColor(l.userNickListBox.Rows[l.userNickListBox.SelectedRow])
+	l.chatBox.Title = l.userNickListBox.Rows[l.userNickListBox.SelectedRow]
 	l.logger.Println("title=", l.chatBox.Title, "content=",
 		l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
-	l.chatBox.Text = convertChatLogToText(l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
+	setRows(l.chatBox, l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
+	l.logger.Println("next user", "rows=", len(l.chatBox.Rows), "top row=",
+		l.chatBox.TopLine())
 	ui.Render(l.userNickListBox, l.chatBox)
 }
 
@@ -283,8 +402,18 @@ func (l *Layout) apendChatLogOut(msg wechat.MessageOut) string {
 		msg)
 
 	if l.groupMemberMap[newMsg.From] != nil {
-		newMsg.Content = l.getUserIdFromContent(newMsg.Content,
-			l.groupMemberMap[newMsg.From])
+		if newMsg.Type == 3 {
+			newMsg.Content = l.getUserIdAndConvertImgContent(newMsg.Content,
+				l.groupMemberMap[newMsg.From])
+
+		} else {
+			newMsg.Content = l.getUserIdFromContent(newMsg.Content,
+				l.groupMemberMap[newMsg.From])
+		}
+	} else {
+		if newMsg.Type == 3 {
+			newMsg.Content = "图片"
+		}
 	}
 
 	if l.userMap[newMsg.To] != "" {
@@ -321,6 +450,19 @@ func (l *Layout) getUserIdFromContent(content string,
 	return builder.String()
 }
 
+func (l *Layout) getUserIdAndConvertImgContent(content string,
+	userMap map[string]string) string {
+	if userMap == nil {
+		return content
+	}
+	s := strings.Split(content, ":")
+	if len(s) > 0 && userMap[s[0]] != "" {
+		s[0] = userMap[s[0]]
+	}
+	l.logger.Println("groupMap=", userMap, "s=", s)
+	return s[0] + ":" + AddUnSelectedBg("图片")
+}
+
 func (l *Layout) apendChatLogIn(msg wechat.Message) string {
 	if l.userChatLog[msg.FromUserName] == nil {
 		l.userChatLog[msg.FromUserName] = []*wechat.MessageRecord{}
@@ -329,8 +471,17 @@ func (l *Layout) apendChatLogIn(msg wechat.Message) string {
 	newMsg := wechat.NewMessageRecordIn(msg)
 
 	if l.groupMemberMap[newMsg.From] != nil {
-		newMsg.Content = l.getUserIdFromContent(newMsg.Content,
-			l.groupMemberMap[newMsg.From])
+		if newMsg.Type == 3 {
+			newMsg.Content = l.getUserIdAndConvertImgContent(newMsg.Content,
+				l.groupMemberMap[newMsg.From])
+		} else {
+			newMsg.Content = l.getUserIdFromContent(newMsg.Content,
+				l.groupMemberMap[newMsg.From])
+		}
+	} else {
+		if newMsg.Type == 3 {
+			newMsg.Content = "图片"
+		}
 	}
 
 	if l.userMap[newMsg.To] != "" {
@@ -348,11 +499,54 @@ func (l *Layout) apendChatLogIn(msg wechat.Message) string {
 
 }
 
-func AddBgColor(msg string) string {
+func (l *Layout) apendImageChatLogIn(msg wechat.MessageImage) string {
+	if l.userChatLog[msg.FromUserName] == nil {
+		l.userChatLog[msg.FromUserName] = []*wechat.MessageRecord{}
+	}
+
+	newMsg := wechat.NewImageMessageRecordIn(msg)
+
+	if l.groupMemberMap[newMsg.From] != nil {
+		if newMsg.Type == 3 {
+			newMsg.Content = l.getUserIdAndConvertImgContent(newMsg.Content,
+				l.groupMemberMap[newMsg.From])
+		} else {
+			newMsg.Content = l.getUserIdFromContent(newMsg.Content,
+				l.groupMemberMap[newMsg.From])
+		}
+	} else {
+		if newMsg.Type == 3 {
+			newMsg.Content = "图片"
+		}
+	}
+
+	if l.userMap[newMsg.To] != "" {
+		newMsg.To = l.userMap[newMsg.To]
+	}
+
+	if l.userMap[newMsg.From] != "" {
+		newMsg.From = l.userMap[newMsg.From]
+	}
+
+	l.userChatLog[msg.FromUserName] = append(l.userChatLog[msg.
+		FromUserName], newMsg)
+
+	return newMsg.String()
+
+}
+
+func AddSelectedBg(msg string) string {
+	return AddBgColor(DelBgColor(msg), SelectedMark)
+}
+
+func AddUnSelectedBg(msg string) string {
+	return AddBgColor(DelBgColor(msg), UnSelectedMark)
+}
+func AddBgColor(msg string, color string) string {
 	if strings.HasPrefix(msg, "[") {
 		return msg
 	}
-	return "[" + msg + "]" + CurMark
+	return "[" + msg + "]" + color
 }
 func DelBgColor(msg string) string {
 
@@ -368,6 +562,20 @@ func appendToPar(p *widgets.Paragraph, k string) {
 		p.Text = strings.Join(subText[len(subText)-20:], "\n")
 	}
 	p.Text += k
+	ui.Render(p)
+}
+
+func appendToList(p *widgets.ImageList, k string) {
+	item := widgets.NewImageListItem()
+	item.Text = k
+	p.Rows = append(p.Rows, item)
+	ui.Render(p)
+}
+
+func appendImageToList(p *widgets.ImageList, k image.Image) {
+	item := widgets.NewImageListItem()
+	item.Img = k
+	p.Rows = append(p.Rows, item)
 	ui.Render(p)
 }
 
