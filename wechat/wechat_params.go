@@ -109,6 +109,12 @@ type Caller interface {
 	Error() error
 }
 
+type HyperLink struct {
+	Title string `xml:"title" json:"Title"`
+	Des   string `xml:"des" json:"Des"`
+	Url   string `xml:"url" json:"Url"`
+}
+
 type BaseRequest struct {
 	XMLName    xml.Name `xml:"error" json:"-"`
 	Ret        int      `xml:"ret" json:"-"`

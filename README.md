@@ -4,6 +4,8 @@
 [liushuchun/wechatcmd](https://github.com/liushuchun/wechatcmd)
 ，在阅读了源码并了解到原作者已放弃继续开发，遂决定fork一份之后在此基础上继续进行开发，完善其功能
 
+*本代码主要在MAC OS上进行开发测试，后续会考虑linux系统的移植和兼容，谢绝windows用户，用windows做开发一点都不geek*
+
 目前已完善点：
 
 - [x] termui版本升级到3.0.0，接口兼容问题修复

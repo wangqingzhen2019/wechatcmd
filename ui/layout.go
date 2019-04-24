@@ -180,10 +180,6 @@ func NewLayout(userNickList []string, userIDList []string,
 			resetPar(l.editBox)
 		case "<C-w>":
 			l.showDetail()
-		case "<C-2>":
-			l.autoReply <- 0 //关闭自动回复
-		case "<C-3>":
-			l.autoReply <- 3 //开启机器人自动回复
 		case "<C-n>":
 			l.NextUser()
 		case "<C-p>":
@@ -233,11 +229,6 @@ func (l *Layout) displayMsgIn() {
 		select {
 
 		case imgMsg = <-l.imageIn:
-			//l.imageMap[imgMsg.MsgId] = imgMsg.Img
-			//if l.msgIdList[imgMsg.TargetId] == nil {
-			//	l.msgIdList[imgMsg.TargetId] = []string{}
-			//}
-			//l.msgIdList[imgMsg.TargetId] = append(l.msgIdList[imgMsg.TargetId], imgMsg.MsgId)
 
 			var newMsgText string
 
@@ -343,10 +334,7 @@ func (l *Layout) showDetail() {
 	if item.Img == nil {
 		return
 	}
-	//root, e := os.Getwd()
-	//if e != nil {
 	root := "/tmp"
-	//}
 	key := time.Now().UTC().UnixNano()
 	builder := strings.Builder{}
 	builder.WriteString(root)
