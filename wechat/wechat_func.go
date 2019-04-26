@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/gif"
 	"image/jpeg"
+	"image/png"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -192,6 +194,25 @@ func (w *Wechat) unmarshalHyperLinkXml(content string) *HyperLink {
 	}
 }
 
+func (w *Wechat) dealImageMessage(msg Message, imageIn chan MessageImage) {
+	msgId := msg.MsgId
+	//msg.Content = "图片"
+	if img, err := w.getImg(msgId, false); err != nil {
+		w.Log.Fatalln("get image error! msgId=", msgId, err)
+	} else {
+		w.convertMsg(&msg)
+		var targetId string
+		if w.User.UserName == msg.FromUserName {
+			targetId = msg.ToUserName
+		} else {
+			targetId = msg.FromUserName
+		}
+		imageIn <- MessageImage{Message: msg, Img: img,
+			TargetId: targetId}
+		//msgIn <- msg
+	}
+}
+
 //同步守护goroutine
 func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 	for {
@@ -220,7 +241,9 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 				for _, m := range msgs {
 					msg := Message{}
 					msgType := m.(map[string]interface{})["MsgType"].(float64)
+					appMsgType := m.(map[string]interface{})["AppMsgType"].(float64)
 					msg.MsgType = int(msgType)
+					msg.AppMsgType = int(appMsgType)
 					msg.FromUserName = m.(map[string]interface{})["FromUserName"].(string)
 					if nickNameFrom, ok := w.MemberMap[msg.FromUserName]; ok {
 						msg.FromUserNickName = nickNameFrom.NickName
@@ -255,45 +278,36 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 						}
 						w.convertMsg(&msg)
 						msgIn <- msg
-					case 3:
-						//图片
-						msgId := msg.MsgId
-						//msg.Content = "图片"
-						if img, err := w.getImg(msgId, false); err != nil {
-							w.Log.Fatalln("get image error! msgId=", msgId, err)
-						} else {
-							w.convertMsg(&msg)
-							var targetId string
-							if w.User.UserName == msg.FromUserName {
-								targetId = msg.ToUserName
-							} else {
-								targetId = msg.FromUserName
-							}
-							imageIn <- MessageImage{Message: msg, Img: img,
-								TargetId: targetId}
-							//msgIn <- msg
-						}
-					case 34:
-						//语音
+
 					case 47:
 						//动画表情
+						fallthrough
+					case 3:
+						//图片
+						w.dealImageMessage(msg, imageIn)
+					case 34:
+						//语音
 					case 49:
 						//链接
-						re := w.unmarshalHyperLinkXml(msg.Content)
-						if msg.FromUserName[:2] == "@@" {
-							//群消息需要把发送人在content里面处理一下
-							xmlStart := strings.Index(msg.Content, "<?xml")
-							if xmlStart < 0 {
-								xmlStart = len(msg.Content)
-							}
-							msg.Content = msg.Content[:xmlStart]
+						if msg.AppMsgType == 8 {
+							w.dealImageMessage(msg, imageIn)
 						} else {
-							msg.Content = ""
+							re := w.unmarshalHyperLinkXml(msg.Content)
+							if msg.FromUserName[:2] == "@@" {
+								//群消息需要把发送人在content里面处理一下
+								xmlStart := strings.Index(msg.Content, "<?xml")
+								if xmlStart < 0 {
+									xmlStart = len(msg.Content)
+								}
+								msg.Content = msg.Content[:xmlStart]
+							} else {
+								msg.Content = ""
+							}
+							msg.Content += re.Title + "--" + re.Des
+							msg.Url = re.Url
+							w.convertMsg(&msg)
+							msgIn <- msg
 						}
-						msg.Content += re.Title + "--" + re.Des
-						msg.Url = re.Url
-						w.convertMsg(&msg)
-						msgIn <- msg
 
 					case 51:
 						//获取联系人信息成功
@@ -653,18 +667,32 @@ func (w *Wechat) FetchImg(apiURI string, body io.Reader) (img image.Image,
 
 	resp, err := w.Client.Do(req)
 	if err != nil {
-		return
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	w.Log.Println("response=", resp)
 
-	if img, err := jpeg.Decode(resp.Body); err != nil {
-		w.Log.Fatalf("the error:%+v", err)
-		return nil, err
+	buffer, err := ioutil.ReadAll(resp.Body)
+
+	if img, err := jpeg.Decode(bytes.NewReader(buffer)); err != nil {
+		w.Log.Println("can not decode with jpeg:", err)
 	} else {
 		return img, nil
 	}
+
+	if img, err := gif.Decode(bytes.NewReader(buffer)); err != nil {
+		w.Log.Println("can not decode with gif:", err)
+	} else {
+		return img, nil
+	}
+
+	if img, err := png.Decode(bytes.NewReader(buffer)); err != nil {
+		w.Log.Println("can not decode with png:", err)
+	} else {
+		return img, nil
+	}
+	return nil, err
 }
 
 func (w *Wechat) SendTest(apiURI string, body io.Reader, call Caller) (err error) {
