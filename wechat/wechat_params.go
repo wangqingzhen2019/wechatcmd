@@ -34,6 +34,7 @@ type MessageRecord struct {
 	Content    string
 	ContentImg image.Image
 	Type       int
+	Url        string
 }
 
 func (m *MessageRecord) String() string {
@@ -107,6 +108,12 @@ type Request struct {
 type Caller interface {
 	IsSuccess() bool
 	Error() error
+}
+
+type HyperLink struct {
+	Title string `xml:"title" json:"Title"`
+	Des   string `xml:"des" json:"Des"`
+	Url   string `xml:"url" json:"Url"`
 }
 
 type BaseRequest struct {
@@ -332,6 +339,7 @@ func NewMessageRecordIn(message Message) *MessageRecord {
 		To:      message.ToUserName,
 		Content: message.Content,
 		Type:    message.MsgType,
+		Url:     message.Url,
 	}
 }
 

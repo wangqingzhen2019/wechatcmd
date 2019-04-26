@@ -7,6 +7,8 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -171,7 +173,7 @@ func NewLayout(userNickList []string, userIDList []string,
 		case "q", "<C-c>", "<C-d>":
 			return
 		case "<Enter>":
-			appendToList(l.chatBox, l.masterName+"->"+l.chatBox.
+			appendTextToList(l.chatBox, l.masterName+"->"+l.chatBox.
 				Title+":"+l.editBox.Text+"\n")
 			l.logger.Println(l.editBox.Text)
 			if l.editBox.Text != "" {
@@ -180,10 +182,6 @@ func NewLayout(userNickList []string, userIDList []string,
 			resetPar(l.editBox)
 		case "<C-w>":
 			l.showDetail()
-		case "<C-2>":
-			l.autoReply <- 0 //关闭自动回复
-		case "<C-3>":
-			l.autoReply <- 3 //开启机器人自动回复
 		case "<C-n>":
 			l.NextUser()
 		case "<C-p>":
@@ -233,25 +231,20 @@ func (l *Layout) displayMsgIn() {
 		select {
 
 		case imgMsg = <-l.imageIn:
-			//l.imageMap[imgMsg.MsgId] = imgMsg.Img
-			//if l.msgIdList[imgMsg.TargetId] == nil {
-			//	l.msgIdList[imgMsg.TargetId] = []string{}
-			//}
-			//l.msgIdList[imgMsg.TargetId] = append(l.msgIdList[imgMsg.TargetId], imgMsg.MsgId)
 
-			var newMsgText string
+			var newMsg *wechat.MessageRecord
 
 			if l.masterID == imgMsg.FromUserName {
-				newMsgText = l.apendChatLogOut(wechat.MessageOut{ToUserName: imgMsg.
+				newMsg = l.apendChatLogOut(wechat.MessageOut{ToUserName: imgMsg.
 					ToUserName, Content: imgMsg.Content, Type: imgMsg.MsgType,
 					MsgId: imgMsg.MsgId})
 			} else {
-				newMsgText = l.apendImageChatLogIn(imgMsg)
+				newMsg = l.apendImageChatLogIn(imgMsg)
 			}
 
-			l.logger.Println("message receive = ", newMsgText)
+			l.logger.Println("message receive = ", newMsg.String())
 
-			appendToPar(l.msgInBox, newMsgText+"\n")
+			appendToPar(l.msgInBox, newMsg.String()+"\n")
 
 			var targetUserName string
 			if l.masterID == imgMsg.FromUserName {
@@ -268,20 +261,20 @@ func (l *Layout) displayMsgIn() {
 
 		case msg = <-l.msgIn:
 
-			var newMsgText string
+			var newMsg *wechat.MessageRecord
 			msg.Content = TranslateEmoji(ConvertToEmoji(msg.Content))
 
 			if l.masterID == msg.FromUserName {
-				newMsgText = l.apendChatLogOut(wechat.MessageOut{ToUserName: msg.
+				newMsg = l.apendChatLogOut(wechat.MessageOut{ToUserName: msg.
 					ToUserName, Content: msg.Content, Type: msg.MsgType,
 					MsgId: msg.MsgId})
 			} else {
-				newMsgText = l.apendChatLogIn(msg)
+				newMsg = l.apendChatLogIn(msg)
 			}
 
-			l.logger.Println("message receive = ", newMsgText)
+			l.logger.Println("message receive = ", newMsg.String())
 
-			appendToPar(l.msgInBox, newMsgText+"\n")
+			appendToPar(l.msgInBox, newMsg.String()+"\n")
 
 			var targetUserName string
 			if l.masterID == msg.FromUserName {
@@ -293,7 +286,7 @@ func (l *Layout) displayMsgIn() {
 				l.logger.Println("append to current chatbox", msg.FromUserName,
 					"to=",
 					msg.ToUserName, "content=", msg.Content)
-				appendToList(l.chatBox, newMsgText)
+				appendToList(l.chatBox, newMsg)
 			}
 
 		case <-l.closeChan:
@@ -338,29 +331,52 @@ func (l *Layout) PrevSelect() {
 	ui.Render(l.chatBox)
 }
 
+var commands = map[string]string{
+	"darwin": "open",
+	"linux":  "xdg-open",
+}
+
+// Open calls the OS default program for uri
+func Open(uri string) error {
+	run, ok := commands[runtime.GOOS]
+	if !ok {
+		return fmt.Errorf("don't know how to open things on %s platform", runtime.GOOS)
+	}
+
+	if !strings.HasPrefix(uri, "http") {
+		uri = "http://" + uri
+	}
+
+	cmd := exec.Command(run, uri)
+	return cmd.Start()
+}
+
 func (l *Layout) showDetail() {
 	item := l.chatBox.Rows[l.chatBox.SelectedRow]
-	if item.Img == nil {
+	if item.Img == nil && item.Url == "" {
 		return
 	}
-	//root, e := os.Getwd()
-	//if e != nil {
-	root := "/tmp"
-	//}
-	key := time.Now().UTC().UnixNano()
-	builder := strings.Builder{}
-	builder.WriteString(root)
-	builder.WriteRune(os.PathSeparator)
-	builder.WriteString(strconv.FormatInt(key, 10))
-	builder.WriteString(".png")
-	out, err := os.Create(builder.String())
-	if err != nil {
-		l.logger.Fatalln("open file failed! path=", builder.String(), err)
-	}
-	if err := png.Encode(out, item.Img); err != nil {
-		l.logger.Fatalln("encode image failed! path=", builder.String(), err)
-	} else {
-		_ = open.Start(builder.String())
+	if item.Url != "" {
+		if err := Open(item.Url); err != nil {
+			panic(err)
+		}
+	} else if item.Img != nil {
+		root := "/tmp"
+		key := time.Now().UTC().UnixNano()
+		builder := strings.Builder{}
+		builder.WriteString(root)
+		builder.WriteRune(os.PathSeparator)
+		builder.WriteString(strconv.FormatInt(key, 10))
+		builder.WriteString(".png")
+		out, err := os.Create(builder.String())
+		if err != nil {
+			l.logger.Fatalln("open file failed! path=", builder.String(), err)
+		}
+		if err := png.Encode(out, item.Img); err != nil {
+			l.logger.Fatalln("encode image failed! path=", builder.String(), err)
+		} else {
+			_ = open.Start(builder.String())
+		}
 	}
 
 }
@@ -393,7 +409,7 @@ func (l *Layout) SendText(text string) {
 	l.msgOut <- msg
 }
 
-func (l *Layout) apendChatLogOut(msg wechat.MessageOut) string {
+func (l *Layout) apendChatLogOut(msg wechat.MessageOut) *wechat.MessageRecord {
 	if l.userChatLog[msg.ToUserName] == nil {
 		l.userChatLog[msg.ToUserName] = []*wechat.MessageRecord{}
 	}
@@ -427,7 +443,7 @@ func (l *Layout) apendChatLogOut(msg wechat.MessageOut) string {
 	l.userChatLog[msg.ToUserName] = append(l.userChatLog[msg.ToUserName],
 		newMsg)
 
-	return newMsg.String()
+	return newMsg
 }
 
 func (l *Layout) getUserIdFromContent(content string,
@@ -463,7 +479,7 @@ func (l *Layout) getUserIdAndConvertImgContent(content string,
 	return s[0] + ":" + AddUnSelectedBg("图片")
 }
 
-func (l *Layout) apendChatLogIn(msg wechat.Message) string {
+func (l *Layout) apendChatLogIn(msg wechat.Message) *wechat.MessageRecord {
 	if l.userChatLog[msg.FromUserName] == nil {
 		l.userChatLog[msg.FromUserName] = []*wechat.MessageRecord{}
 	}
@@ -495,11 +511,11 @@ func (l *Layout) apendChatLogIn(msg wechat.Message) string {
 	l.userChatLog[msg.FromUserName] = append(l.userChatLog[msg.
 		FromUserName], newMsg)
 
-	return newMsg.String()
+	return newMsg
 
 }
 
-func (l *Layout) apendImageChatLogIn(msg wechat.MessageImage) string {
+func (l *Layout) apendImageChatLogIn(msg wechat.MessageImage) *wechat.MessageRecord {
 	if l.userChatLog[msg.FromUserName] == nil {
 		l.userChatLog[msg.FromUserName] = []*wechat.MessageRecord{}
 	}
@@ -531,7 +547,7 @@ func (l *Layout) apendImageChatLogIn(msg wechat.MessageImage) string {
 	l.userChatLog[msg.FromUserName] = append(l.userChatLog[msg.
 		FromUserName], newMsg)
 
-	return newMsg.String()
+	return newMsg
 
 }
 
@@ -565,15 +581,26 @@ func appendToPar(p *widgets.Paragraph, k string) {
 	ui.Render(p)
 }
 
-func appendToList(p *widgets.ImageList, k string) {
+func appendTextToList(p *widgets.ImageList, k string) {
 	item := widgets.NewImageListItem()
 	item.Text = k
 	p.Rows = append(p.Rows, item)
 	ui.Render(p)
 }
 
+func appendToList(p *widgets.ImageList, k *wechat.MessageRecord) {
+	item := widgets.NewImageListItem()
+	item.Text = k.String()
+	if k.Url != "" {
+		item.Url = k.Url
+	}
+	p.Rows = append(p.Rows, item)
+	ui.Render(p)
+}
+
 func appendImageToList(p *widgets.ImageList, k image.Image) {
 	item := widgets.NewImageListItem()
+	item.WrapText = true
 	item.Img = k
 	p.Rows = append(p.Rows, item)
 	ui.Render(p)

@@ -3,6 +3,7 @@ package wechat
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"image"
@@ -152,6 +153,45 @@ func (w *Wechat) convertMsg(msg *Message) {
 	}
 }
 
+func (w *Wechat) unmarshalHyperLinkXml(content string) *HyperLink {
+
+	decoder := xml.NewDecoder(strings.NewReader(content))
+	var elementName string
+	re := HyperLink{}
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
+				return &re
+			} else {
+				w.Log.Fatalf("Failed to Parse XML with the error of %v\n", err)
+				return nil
+			}
+		}
+		token = xml.CopyToken(token)
+		switch t := token.(type) {
+		case xml.StartElement:
+			elementName = t.Name.Local
+			//fmt.Printf("StartElement: <%v>\n", t.Name.Local)
+		case xml.EndElement:
+			elementName = ""
+			//fmt.Printf("EndElement: <%v>\n", t.Name.Local)
+		case xml.CharData:
+			switch elementName {
+			case "title":
+				re.Title = string(t)
+			case "des":
+				re.Des = string(t)
+			case "url":
+				re.Url = string(t)
+			}
+		case xml.Comment:
+			//fmt.Printf("Comment: <!--%v-->\n", string(t))
+			continue
+		}
+	}
+}
+
 //同步守护goroutine
 func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 	for {
@@ -202,16 +242,16 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 					case 1:
 
 						if msg.FromUserName[:2] == "@@" {
-							//群消息，暂时不处理
+							//群消息
 							if msg.FromUserNickName == "" {
 								contentSlice := strings.Split(msg.Content, ":<br/>")
 								msg.Content = contentSlice[1]
 
 							}
 						} else {
-							if w.AutoReply {
-								w.SendMsg(msg.FromUserName, w.AutoReplyMsg(), false)
-							}
+							//if w.AutoReply {
+							//	w.SendMsg(msg.FromUserName, w.AutoReplyMsg(), false)
+							//}
 						}
 						w.convertMsg(&msg)
 						msgIn <- msg
@@ -239,6 +279,22 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 						//动画表情
 					case 49:
 						//链接
+						re := w.unmarshalHyperLinkXml(msg.Content)
+						if msg.FromUserName[:2] == "@@" {
+							//群消息需要把发送人在content里面处理一下
+							xmlStart := strings.Index(msg.Content, "<?xml")
+							if xmlStart < 0 {
+								xmlStart = len(msg.Content)
+							}
+							msg.Content = msg.Content[:xmlStart]
+						} else {
+							msg.Content = ""
+						}
+						msg.Content += re.Title + "--" + re.Des
+						msg.Url = re.Url
+						w.convertMsg(&msg)
+						msgIn <- msg
+
 					case 51:
 						//获取联系人信息成功
 					case 62:
