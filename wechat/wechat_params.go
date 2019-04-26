@@ -34,6 +34,7 @@ type MessageRecord struct {
 	Content    string
 	ContentImg image.Image
 	Type       int
+	Url        string
 }
 
 func (m *MessageRecord) String() string {
@@ -338,6 +339,7 @@ func NewMessageRecordIn(message Message) *MessageRecord {
 		To:      message.ToUserName,
 		Content: message.Content,
 		Type:    message.MsgType,
+		Url:     message.Url,
 	}
 }
 
