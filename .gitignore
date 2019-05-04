@@ -12,7 +12,6 @@ wechatcmd
 _obj
 _test
 
-/ui/ui
 log.txt
 
 # Architecture specific extensions/prefixes

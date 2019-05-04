@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/gif"
 	"image/jpeg"
+	"image/png"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -192,6 +195,25 @@ func (w *Wechat) unmarshalHyperLinkXml(content string) *HyperLink {
 	}
 }
 
+func (w *Wechat) dealImageMessage(msg Message, imageIn chan MessageImage) {
+	msgId := msg.MsgId
+	//msg.Content = "图片"
+	if img, err := w.getImg(msgId, false); err != nil {
+		w.Log.Fatalln("get image error! msgId=", msgId, err)
+	} else {
+		w.convertMsg(&msg)
+		var targetId string
+		if w.User.UserName == msg.FromUserName {
+			targetId = msg.ToUserName
+		} else {
+			targetId = msg.FromUserName
+		}
+		imageIn <- MessageImage{Message: msg, Img: img,
+			TargetId: targetId}
+		//msgIn <- msg
+	}
+}
+
 //同步守护goroutine
 func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 	for {
@@ -204,12 +226,13 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 		switch resp.RetCode {
 		case 1100:
 			w.Log.Println("从微信上登出")
+			panic("从微信上登出")
 		case 1101:
 			w.Log.Println("从其他设备上登陆")
-			break
+			panic("从其他设备上登陆")
 		case 0:
 			switch resp.Selector {
-			case 2, 3: //有消息,未知
+			case 2, 3, 6: //有消息,未知
 				msgs, err := w.getSyncMsg()
 				w.Log.Printf("the msgs:%+v\n", msgs)
 
@@ -220,7 +243,9 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 				for _, m := range msgs {
 					msg := Message{}
 					msgType := m.(map[string]interface{})["MsgType"].(float64)
+					appMsgType := m.(map[string]interface{})["AppMsgType"].(float64)
 					msg.MsgType = int(msgType)
+					msg.AppMsgType = int(appMsgType)
 					msg.FromUserName = m.(map[string]interface{})["FromUserName"].(string)
 					if nickNameFrom, ok := w.MemberMap[msg.FromUserName]; ok {
 						msg.FromUserNickName = nickNameFrom.NickName
@@ -237,6 +262,9 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 					msg.Content = strings.Replace(msg.Content, " ", " ", 1)
 
 					msg.MsgId = m.(map[string]interface{})["MsgId"].(string)
+
+					hasProductId := int(math.Floor(m.(map[string]interface{})["HasProductId"].(float64) + 0.5))
+					w.Log.Println("hasProductId=", hasProductId)
 
 					switch msg.MsgType {
 					case 1:
@@ -255,52 +283,47 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 						}
 						w.convertMsg(&msg)
 						msgIn <- msg
+
+					case 47:
+						if hasProductId == 1 {
+							msg.Content = "[收到了一个表情，请在手机上查看]"
+							msgIn <- msg
+						} else {
+							w.dealImageMessage(msg, imageIn)
+						}
 					case 3:
 						//图片
-						msgId := msg.MsgId
-						//msg.Content = "图片"
-						if img, err := w.getImg(msgId, false); err != nil {
-							w.Log.Fatalln("get image error! msgId=", msgId, err)
-						} else {
-							w.convertMsg(&msg)
-							var targetId string
-							if w.User.UserName == msg.FromUserName {
-								targetId = msg.ToUserName
-							} else {
-								targetId = msg.FromUserName
-							}
-							imageIn <- MessageImage{Message: msg, Img: img,
-								TargetId: targetId}
-							//msgIn <- msg
-						}
+						w.dealImageMessage(msg, imageIn)
 					case 34:
-						//语音
-					case 47:
-						//动画表情
+					//语音
 					case 49:
 						//链接
-						re := w.unmarshalHyperLinkXml(msg.Content)
-						if msg.FromUserName[:2] == "@@" {
-							//群消息需要把发送人在content里面处理一下
-							xmlStart := strings.Index(msg.Content, "<?xml")
-							if xmlStart < 0 {
-								xmlStart = len(msg.Content)
-							}
-							msg.Content = msg.Content[:xmlStart]
+						if msg.AppMsgType == 8 {
+							w.dealImageMessage(msg, imageIn)
 						} else {
-							msg.Content = ""
+							re := w.unmarshalHyperLinkXml(msg.Content)
+							if msg.FromUserName[:2] == "@@" {
+								//群消息需要把发送人在content里面处理一下
+								xmlStart := strings.Index(msg.Content, "<?xml")
+								if xmlStart < 0 {
+									xmlStart = len(msg.Content)
+								}
+								msg.Content = msg.Content[:xmlStart]
+							} else {
+								msg.Content = ""
+							}
+							msg.Content += re.Title + "--" + re.Des
+							msg.Url = re.Url
+							w.convertMsg(&msg)
+							msgIn <- msg
 						}
-						msg.Content += re.Title + "--" + re.Des
-						msg.Url = re.Url
-						w.convertMsg(&msg)
-						msgIn <- msg
 
 					case 51:
-						//获取联系人信息成功
+					//获取联系人信息成功
 					case 62:
-						//获得一段小视频
+					//获得一段小视频
 					case 10002:
-						//撤回一条消息
+					//撤回一条消息
 					default:
 						msg := Message{}
 						msg.Content = fmt.Sprintf("未知消息：%s", m)
@@ -653,18 +676,32 @@ func (w *Wechat) FetchImg(apiURI string, body io.Reader) (img image.Image,
 
 	resp, err := w.Client.Do(req)
 	if err != nil {
-		return
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	w.Log.Println("response=", resp)
 
-	if img, err := jpeg.Decode(resp.Body); err != nil {
-		w.Log.Fatalf("the error:%+v", err)
-		return nil, err
+	buffer, err := ioutil.ReadAll(resp.Body)
+
+	if img, err := jpeg.Decode(bytes.NewReader(buffer)); err != nil {
+		w.Log.Println("can not decode with jpeg:", err)
 	} else {
 		return img, nil
 	}
+
+	if img, err := gif.Decode(bytes.NewReader(buffer)); err != nil {
+		w.Log.Println("can not decode with gif:", err)
+	} else {
+		return img, nil
+	}
+
+	if img, err := png.Decode(bytes.NewReader(buffer)); err != nil {
+		w.Log.Println("can not decode with png:", err)
+	} else {
+		return img, nil
+	}
+	return nil, err
 }
 
 func (w *Wechat) SendTest(apiURI string, body io.Reader, call Caller) (err error) {
