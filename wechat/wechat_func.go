@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -225,9 +226,10 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 		switch resp.RetCode {
 		case 1100:
 			w.Log.Println("从微信上登出")
+			panic("从微信上登出")
 		case 1101:
 			w.Log.Println("从其他设备上登陆")
-			break
+			panic("从其他设备上登陆")
 		case 0:
 			switch resp.Selector {
 			case 2, 3, 6: //有消息,未知
@@ -261,6 +263,9 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 
 					msg.MsgId = m.(map[string]interface{})["MsgId"].(string)
 
+					hasProductId := int(math.Floor(m.(map[string]interface{})["HasProductId"].(float64) + 0.5))
+					w.Log.Println("hasProductId=", hasProductId)
+
 					switch msg.MsgType {
 					case 1:
 
@@ -280,13 +285,17 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 						msgIn <- msg
 
 					case 47:
-						//动画表情
-						fallthrough
+						if hasProductId == 1 {
+							msg.Content = "[收到了一个表情，请在手机上查看]"
+							msgIn <- msg
+						} else {
+							w.dealImageMessage(msg, imageIn)
+						}
 					case 3:
 						//图片
 						w.dealImageMessage(msg, imageIn)
 					case 34:
-						//语音
+					//语音
 					case 49:
 						//链接
 						if msg.AppMsgType == 8 {
@@ -310,11 +319,11 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 						}
 
 					case 51:
-						//获取联系人信息成功
+					//获取联系人信息成功
 					case 62:
-						//获得一段小视频
+					//获得一段小视频
 					case 10002:
-						//撤回一条消息
+					//撤回一条消息
 					default:
 						msg := Message{}
 						msg.Content = fmt.Sprintf("未知消息：%s", m)

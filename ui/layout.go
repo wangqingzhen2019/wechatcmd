@@ -316,6 +316,7 @@ func setRows(p *widgets.ImageList, records []*wechat.MessageRecord) {
 			item.Img = i.ContentImg
 		} else if i.Url != "" {
 			item.Url = i.Url
+			item.Text = i.From + "->" + i.To + ": " + i.Content
 		} else {
 			item.Text = i.From + "->" + i.To + ": " + i.Content
 		}
