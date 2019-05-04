@@ -230,7 +230,7 @@ func (w *Wechat) SyncDaemon(msgIn chan Message, imageIn chan MessageImage) {
 			break
 		case 0:
 			switch resp.Selector {
-			case 2, 3: //有消息,未知
+			case 2, 3, 6: //有消息,未知
 				msgs, err := w.getSyncMsg()
 				w.Log.Printf("the msgs:%+v\n", msgs)
 

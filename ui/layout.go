@@ -170,7 +170,7 @@ func NewLayout(userNickList []string, userIDList []string,
 	for {
 		e := <-uiEvents
 		switch e.ID {
-		case "q", "<C-c>", "<C-d>":
+		case "<C-c>", "<C-d>":
 			return
 		case "<Enter>":
 			appendTextToList(l.chatBox, l.masterName+"->"+l.chatBox.
@@ -301,10 +301,10 @@ func (l *Layout) PrevUser() {
 	l.userNickListBox.ScrollUp()
 	l.userCur = l.userNickListBox.SelectedRow
 	l.chatBox.Title = l.userNickListBox.Rows[l.userNickListBox.SelectedRow]
-	l.logger.Println("title=", l.chatBox.Title, "content=",
-		l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
+	//l.logger.Println("title=", l.chatBox.Title, "content=",
+	//	l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
 	setRows(l.chatBox, l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
-	l.logger.Println("prev user", "rows=", len(l.chatBox.Rows))
+	//l.logger.Println("prev user", "rows=", len(l.chatBox.Rows))
 	ui.Render(l.userNickListBox, l.chatBox)
 }
 
@@ -314,6 +314,8 @@ func setRows(p *widgets.ImageList, records []*wechat.MessageRecord) {
 		item := widgets.NewImageListItem()
 		if i.ContentImg != nil {
 			item.Img = i.ContentImg
+		} else if i.Url != "" {
+			item.Url = i.Url
 		} else {
 			item.Text = i.From + "->" + i.To + ": " + i.Content
 		}
@@ -353,6 +355,7 @@ func Open(uri string) error {
 
 func (l *Layout) showDetail() {
 	item := l.chatBox.Rows[l.chatBox.SelectedRow]
+	l.logger.Println("item detail selected! item=", item)
 	if item.Img == nil && item.Url == "" {
 		return
 	}
@@ -390,11 +393,11 @@ func (l *Layout) NextUser() {
 	l.userNickListBox.ScrollDown()
 	l.userCur = l.userNickListBox.SelectedRow
 	l.chatBox.Title = l.userNickListBox.Rows[l.userNickListBox.SelectedRow]
-	l.logger.Println("title=", l.chatBox.Title, "content=",
-		l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
+	//l.logger.Println("title=", l.chatBox.Title, "content=",
+	//	l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
 	setRows(l.chatBox, l.userChatLog[l.userIDList[l.userNickListBox.SelectedRow]])
-	l.logger.Println("next user", "rows=", len(l.chatBox.Rows), "top row=",
-		l.chatBox.TopLine())
+	//l.logger.Println("next user", "rows=", len(l.chatBox.Rows), "top row=",
+	//	l.chatBox.TopLine())
 	ui.Render(l.userNickListBox, l.chatBox)
 }
 
