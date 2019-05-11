@@ -4,7 +4,7 @@
 [liushuchun/wechatcmd](https://github.com/liushuchun/wechatcmd)
 ，在阅读了源码并了解到原作者已放弃继续开发，遂决定fork一份之后在此基础上继续进行开发，完善其功能
 
-*本代码主要在MAC OS上进行开发测试，后续会考虑linux系统的移植和兼容，暂不考虑windows*
+*本代码主要在MAC OS上进行开发测试，针对linux系统的兼容主要基于ubuntu进行考虑的，如果在实际使用中存在什么问题欢迎提出，暂不考虑windows*
 
 目前已完善点：
 
