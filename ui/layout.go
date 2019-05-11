@@ -356,15 +356,41 @@ var commands = map[string]string{
 
 var notifyCommands = map[string]string{
 	"darwin": "osascript",
+	"linux":  "notify-send",
 }
 
 var notifyCommandsArgs = map[string][]string{
 	"darwin": {"-e", `display notification "%s" with title "%s"`},
+	"linux":  {`%s`},
+}
+
+type formatFunc func(format []string, args ...string) []string
+
+func darwinFormatFunc() formatFunc {
+	return func(format []string, args ...string) []string {
+		newString := format[1]
+		newString = fmt.Sprintf(newString, args[0], args[1])
+		return []string{format[0], newString}
+	}
+}
+
+func linuxFormatFunc() formatFunc {
+	return func(format []string, args ...string) []string {
+		newString := format[0]
+		newString = fmt.Sprintf(newString, args[0])
+		return []string{newString}
+	}
+}
+
+var notifyFormatFunc = map[string]formatFunc{
+	"darwin": darwinFormatFunc(),
+	"linux":  linuxFormatFunc(),
 }
 
 func ShowNotify(message string) error {
 	run, ok := notifyCommands[runtime.GOOS]
 	args := notifyCommandsArgs[runtime.GOOS]
+	notifyFunc := notifyFormatFunc[runtime.GOOS]
 	if !ok {
 		return fmt.Errorf("don't know how to send notify on %s"+
 			" platform",
@@ -373,11 +399,7 @@ func ShowNotify(message string) error {
 	if message == "" {
 		message = "收到了一个消息"
 	}
-	newArgs := make([]string, len(args))
-	for i, arg := range args {
-		newArgs[i] = arg
-	}
-	newArgs[1] = fmt.Sprintf(newArgs[1], message, "wechat")
+	newArgs := notifyFunc(args, message, "wechat")
 	cmd := exec.Command(run, newArgs...)
 	return cmd.Start()
 }
