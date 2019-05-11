@@ -35,6 +35,7 @@ type Layout struct {
 	masterID        string //主人的id
 	currentMsgCount int
 	maxMsgCount     int
+	Notify          bool
 	userIn          chan []string            // 用户的刷新
 	msgIn           chan wechat.Message      // 消息刷新
 	msgOut          chan wechat.MessageOut   //  消息输出
@@ -159,6 +160,7 @@ func NewLayout(userNickList []string, userIDList []string,
 		groupMemberMap:  groupMemberMap,
 		imageMap:        imageMap,
 		msgIdList:       make(map[string][]string),
+		Notify:          true,
 	}
 
 	go l.displayMsgIn()
@@ -190,6 +192,9 @@ func NewLayout(userNickList []string, userIDList []string,
 			l.NextSelect()
 		case "<C-k>":
 			l.PrevSelect()
+		case "<C-a>":
+			l.Notify = !l.Notify
+			l.logger.Println("notify state", l.Notify)
 		case "<Space>":
 			appendToPar(l.editBox, " ")
 		case "<Backspace>":
@@ -221,6 +226,16 @@ func NewLayout(userNickList []string, userIDList []string,
 
 }
 
+func (l *Layout) messageReceived(newMsg *wechat.MessageRecord) {
+	msgText := newMsg.String() + "\n"
+	if l.Notify {
+		if err := ShowNotify(msgText); err != nil {
+			l.logger.Println("notify error happen", err.Error())
+		}
+	}
+	appendToPar(l.msgInBox, msgText)
+}
+
 func (l *Layout) displayMsgIn() {
 	var (
 		msg    wechat.Message
@@ -244,7 +259,7 @@ func (l *Layout) displayMsgIn() {
 
 			l.logger.Println("message receive = ", newMsg.String())
 
-			appendToPar(l.msgInBox, newMsg.String()+"\n")
+			l.messageReceived(newMsg)
 
 			var targetUserName string
 			if l.masterID == imgMsg.FromUserName {
@@ -274,7 +289,7 @@ func (l *Layout) displayMsgIn() {
 
 			l.logger.Println("message receive = ", newMsg.String())
 
-			appendToPar(l.msgInBox, newMsg.String()+"\n")
+			l.messageReceived(newMsg)
 
 			var targetUserName string
 			if l.masterID == msg.FromUserName {
@@ -337,6 +352,34 @@ func (l *Layout) PrevSelect() {
 var commands = map[string]string{
 	"darwin": "open",
 	"linux":  "xdg-open",
+}
+
+var notifyCommands = map[string]string{
+	"darwin": "osascript",
+}
+
+var notifyCommandsArgs = map[string][]string{
+	"darwin": {"-e", `display notification "%s" with title "%s"`},
+}
+
+func ShowNotify(message string) error {
+	run, ok := notifyCommands[runtime.GOOS]
+	args := notifyCommandsArgs[runtime.GOOS]
+	if !ok {
+		return fmt.Errorf("don't know how to send notify on %s"+
+			" platform",
+			runtime.GOOS)
+	}
+	if message == "" {
+		message = "收到了一个消息"
+	}
+	newArgs := make([]string, len(args))
+	for i, arg := range args {
+		newArgs[i] = arg
+	}
+	newArgs[1] = fmt.Sprintf(newArgs[1], message, "wechat")
+	cmd := exec.Command(run, newArgs...)
+	return cmd.Start()
 }
 
 // Open calls the OS default program for uri

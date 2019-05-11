@@ -2,11 +2,13 @@ package ui
 
 import (
 	"flag"
+	"github.com/hawklithm/wechatcmd/wechat"
 	"log"
 	"os"
+	"os/exec"
+	"strconv"
 	"testing"
-
-	"github.com/hawklithm/wechatcmd/wechat"
+	"time"
 )
 
 func Test_UI(t *testing.T) {
@@ -37,4 +39,21 @@ func Test_UI(t *testing.T) {
 	NewLayout(initList, userList, []wechat.Member{}, "myName", "12235235",
 		msgIn, textOut, imageIn,
 		closeChan, autoChan, wxLogger)
+}
+
+func Test_NOTIFY(t *testing.T) {
+
+	for i := 0; i < 10; i++ {
+		if e := exec.Command("osascript", "-e",
+			`display notification "test" with title "test_title"`).Run(); e != nil {
+			println("error happen", e.Error())
+		}
+	}
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(100)
+		if e := ShowNotify("test msg" + strconv.Itoa(i)); e != nil {
+			print(e.Error())
+		}
+	}
 }
