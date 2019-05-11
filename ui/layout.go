@@ -35,6 +35,7 @@ type Layout struct {
 	masterID        string //主人的id
 	currentMsgCount int
 	maxMsgCount     int
+	Notify          bool
 	userIn          chan []string            // 用户的刷新
 	msgIn           chan wechat.Message      // 消息刷新
 	msgOut          chan wechat.MessageOut   //  消息输出
@@ -159,6 +160,7 @@ func NewLayout(userNickList []string, userIDList []string,
 		groupMemberMap:  groupMemberMap,
 		imageMap:        imageMap,
 		msgIdList:       make(map[string][]string),
+		Notify:          true,
 	}
 
 	go l.displayMsgIn()
@@ -190,6 +192,9 @@ func NewLayout(userNickList []string, userIDList []string,
 			l.NextSelect()
 		case "<C-k>":
 			l.PrevSelect()
+		case "<C-a>":
+			l.Notify = !l.Notify
+			l.logger.Println("notify state", l.Notify)
 		case "<Space>":
 			appendToPar(l.editBox, " ")
 		case "<Backspace>":
@@ -223,8 +228,10 @@ func NewLayout(userNickList []string, userIDList []string,
 
 func (l *Layout) messageReceived(newMsg *wechat.MessageRecord) {
 	msgText := newMsg.String() + "\n"
-	if err := ShowNotify(msgText); err != nil {
-		l.logger.Println("notify error happen", err.Error())
+	if l.Notify {
+		if err := ShowNotify(msgText); err != nil {
+			l.logger.Println("notify error happen", err.Error())
+		}
 	}
 	appendToPar(l.msgInBox, msgText)
 }

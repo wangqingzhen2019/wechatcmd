@@ -141,6 +141,7 @@ func main() {
 	go wechat.MsgDaemon(msgOut, autoChan)
 	ui.NewLayout(nickNameList, userIDList, groupMemberList,
 		wechat.User.NickName,
-		wechat.User.UserName, msgIn, msgOut, imageIn, closeChan, autoChan, wxLogger)
+		wechat.User.UserName, msgIn, msgOut, imageIn, closeChan, autoChan,
+		wxLogger)
 
 }

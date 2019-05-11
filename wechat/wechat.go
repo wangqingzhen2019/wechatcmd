@@ -50,6 +50,7 @@ type Wechat struct {
 	User            User
 	Root            string
 	Debug           bool
+	MessageNotify   bool
 	Uuid            string
 	BaseUri         string
 	RedirectedUri   string
@@ -110,6 +111,7 @@ func NewWechat(logger *log.Logger) *Wechat {
 		Debug:         true,
 		DeviceId:      "e123456789002237",
 		AutoReplyMode: false,
+		MessageNotify: true,
 		Interactive:   false,
 		AutoOpen:      false,
 		MediaCount:    -1,
@@ -311,7 +313,7 @@ func (w *Wechat) Login() (err error) {
 	if err = w.Send(apiUri, bytes.NewReader(data), newResp); err != nil {
 		return
 	}
-	w.Log.Printf("the newResp:%#v", newResp)
+	w.Log.Printf("the webwxinit newResp:%#v", newResp)
 	for _, contact := range newResp.ContactList {
 		w.InitContactList = append(w.InitContactList, contact)
 	}
