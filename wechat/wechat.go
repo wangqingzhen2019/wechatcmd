@@ -109,7 +109,7 @@ func NewWechat(logger *log.Logger) *Wechat {
 
 	return &Wechat{
 		Debug:         true,
-		DeviceId:      "e123456789002237",
+		DeviceId:      "e123456789002256",
 		AutoReplyMode: false,
 		MessageNotify: true,
 		Interactive:   false,

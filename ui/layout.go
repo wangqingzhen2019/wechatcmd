@@ -21,7 +21,7 @@ import (
 const (
 	SelectedMark   = "(bg:red)"
 	UnSelectedMark = "(bg:blue)"
-	PageSize       = 45
+	PageSize       = 5
 )
 
 type Layout struct {
@@ -94,7 +94,7 @@ func NewLayout(userNickList []string, userIDList []string,
 	}
 
 	userNickListBox := widgets.NewList()
-	userNickListBox.Title = "用户列表"
+	userNickListBox.Title = "users"
 	//userNickListBox.BorderStyle = ui.NewStyle(ui.ColorMagenta)
 	//userNickListBox.Border = true
 	userNickListBox.TextStyle = ui.NewStyle(ui.ColorYellow)
@@ -119,14 +119,14 @@ func NewLayout(userNickList []string, userIDList []string,
 	msgInBox.SetRect(width*6/10, 0, width, height*8/10)
 
 	msgInBox.TextStyle = ui.NewStyle(ui.ColorWhite)
-	msgInBox.Title = "消息窗"
+	msgInBox.Title = "msgbox"
 	msgInBox.BorderStyle = ui.NewStyle(ui.ColorCyan)
 
 	editBox := widgets.NewParagraph()
 	editBox.SetRect(width*2/10, height*8/10, width, height)
 
 	editBox.TextStyle = ui.NewStyle(ui.ColorWhite)
-	editBox.Title = "输入框"
+	editBox.Title = "input"
 	editBox.BorderStyle = ui.NewStyle(ui.ColorCyan)
 
 	pageCount := len(userNickList) / PageSize
@@ -147,7 +147,7 @@ func NewLayout(userNickList []string, userIDList []string,
 		imageIn:         imageIn,
 		closeChan:       closeChan,
 		currentMsgCount: 0,
-		maxMsgCount:     18,
+		maxMsgCount:     5,
 		userCount:       len(userNickList),
 		pageCount:       pageCount,
 		pageSize:        PageSize,
@@ -192,6 +192,10 @@ func NewLayout(userNickList []string, userIDList []string,
 			l.NextSelect()
 		case "<C-k>":
 			l.PrevSelect()
+		case "<C-l>":
+			l.MsgBoxUp()
+		case "<C-m>":
+			l.MsgBoxDown()
 		case "<C-a>":
 			l.Notify = !l.Notify
 			l.logger.Println("notify state", l.Notify)
@@ -448,6 +452,19 @@ func (l *Layout) showDetail() {
 		}
 	}
 
+}
+
+func (l *Layout) MsgBoxDown(){
+	//l.msgInBox.ScrollDown()
+	//ui.Render(l.msgInBox)
+	resetPar(l.msgInBox)
+}
+
+
+func (l *Layout) MsgBoxUp(){
+	//l.msgInBox.ScrollUp()
+	//ui.Render(l.msgInBox)
+	resetPar(l.msgInBox)
 }
 
 func (l *Layout) NextSelect() {

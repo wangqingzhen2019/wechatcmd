@@ -441,7 +441,7 @@ func (w *Wechat) SyncCheck() (resp SyncCheckResp, err error) {
 	params.Set("deviceid", w.Request.DeviceID)
 	params.Set("synckey", w.SyncKeyStr)
 	params.Set("_", curTime)
-	checkUrl := fmt.Sprintf("https://%s/cgi-bin/mmwebwx-bin/synccheck", w.SyncHost)
+	checkUrl := fmt.Sprintf("https://%s/cgi-bin/mmwebwx-bin/synccheck", "webpush.wx.qq.com")
 	Url, err := url.Parse(checkUrl)
 	if err != nil {
 		return
